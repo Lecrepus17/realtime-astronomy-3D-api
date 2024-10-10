@@ -1,5 +1,8 @@
 const express = require("express");
 const { Pool } = require("pg");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 
 const app = express();
 const port = 4000;
@@ -16,36 +19,65 @@ const pool = new Pool({
   port: 5432,
 });
 
-// Rota POST para adicionar um planeta
-app.post("/planets", async (req, res) => {
-  const {
-    name,
-    texture_path,
-    dump_path,
-    clouds_path,
-    specularity_path,
-    description,
-  } = req.body;
-
-  try {
-    const result = await pool.query(
-      `INSERT INTO planets (name, texture_path, dump_path, clouds_path, specularity_path, description)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [
-        name,
-        texture_path,
-        dump_path,
-        clouds_path,
-        specularity_path,
-        description,
-      ]
-    );
-    res.status(201).json(result.rows[0]);
-  } catch (err) {
-    console.error("Erro ao adicionar planeta:", err.message);
-    res.status(500).send("Erro no servidor");
-  }
+// Configuração do multer para salvar os arquivos localmente
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = "./uploads";
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir);
+    }
+    cb(null, dir); // Define o diretório de destino
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`); // Define o nome do arquivo
+  },
 });
+
+const upload = multer({ storage: storage });
+
+// Rota POST para adicionar um planeta com upload de arquivos
+app.post(
+  "/planets",
+  upload.fields([
+    { name: "texture", maxCount: 1 },
+    { name: "dump", maxCount: 1 },
+    { name: "clouds", maxCount: 1 },
+    { name: "specularity", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    const { name, description } = req.body;
+
+    const texture_path = req.files["texture"]
+      ? req.files["texture"][0].path
+      : null;
+    const dump_path = req.files["dump"] ? req.files["dump"][0].path : null;
+    const clouds_path = req.files["clouds"]
+      ? req.files["clouds"][0].path
+      : null;
+    const specularity_path = req.files["specularity"]
+      ? req.files["specularity"][0].path
+      : null;
+
+    try {
+      const result = await pool.query(
+        `INSERT INTO planets (name, texture_path, dump_path, clouds_path, specularity_path, description)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [
+          name,
+          texture_path,
+          dump_path,
+          clouds_path,
+          specularity_path,
+          description,
+        ]
+      );
+      res.status(201).json(result.rows[0]);
+    } catch (err) {
+      console.error("Erro ao adicionar planeta:", err.message);
+      res.status(500).send("Erro no servidor");
+    }
+  }
+);
 
 // Rota GET para visualizar todos os planetas
 app.get("/planets", async (req, res) => {
@@ -60,7 +92,6 @@ app.get("/planets", async (req, res) => {
 
 // Rota POST para adicionar uma pergunta sobre um planeta
 app.post("/planets/:planetId/questions", async (req, res) => {
-  console.log('asdsdfsaf');
   const { planetId } = req.params;
   const { question_text } = req.body;
 
